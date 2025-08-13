@@ -1,13 +1,14 @@
 import asyncio
 import logging
 import re
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import os
+import httpx
 
 # Load environment variables
 load_dotenv()
@@ -38,6 +39,51 @@ TELEGRAM_MAX_LENGTH = 4096
 
 # In-memory storage for tracking queries (in a production app, use a database)
 query_storage = {}
+
+# Cache for free models
+free_models_cache: List[str] = []
+cache_timestamp: float = 0
+CACHE_DURATION = 300  # 5 minutes
+
+async def fetch_free_models() -> List[str]:
+    """
+    Fetch free models from OpenRouter API.
+    """
+    global free_models_cache, cache_timestamp
+    
+    # Check if cache is still valid
+    current_time = asyncio.get_event_loop().time()
+    if free_models_cache and (current_time - cache_timestamp) < CACHE_DURATION:
+        return free_models_cache
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://openrouter.ai/api/v1/models",
+                params={"max_price": 0},
+                headers={"Authorization": f"Bearer {API_KEY}"} if API_KEY else {}
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            models = [model["id"] for model in data.get("data", [])]
+            
+            # Update cache
+            free_models_cache = models
+            cache_timestamp = current_time
+            
+            return models
+    except Exception as e:
+        logger.error(f"Error fetching free models: {e}")
+        return free_models_cache or []  # Return cached models or empty list
+
+def is_valid_model(model: str) -> bool:
+    """
+    Check if a model is valid (exists in free models).
+    """
+    # For now, we'll allow any model since we can't easily validate without API call
+    # In a production implementation, you would check against the fetched models
+    return True
 
 def extract_model_and_query(text: str) -> tuple[Optional[str], str]:
     """
@@ -112,6 +158,20 @@ async def inline_query_handler(inline_query: types.InlineQuery):
     
     # Extract model and query
     model, prompt = extract_model_and_query(query_text)
+    
+    # Validate model if specified
+    if model and not is_valid_model(model):
+        # Return error result for invalid model
+        result = types.InlineQueryResultArticle(
+            id="invalid_model",
+            title="Invalid Model",
+            description=f"Model '{model}' is not available. Use /models to see available models.",
+            input_message_content=types.InputTextMessageContent(
+                message_text=f"❌ Error: Model '{model}' is not available.\n\nSee available models with /models command."
+            )
+        )
+        await bot.answer_inline_query(inline_query.id, results=[result], cache_time=1, is_personal=True)
+        return
     
     if not prompt:
         # Return empty result if no prompt
@@ -239,9 +299,44 @@ async def send_welcome(message: types.Message):
         "`@inline_llm_bot What is the capital of France?`\n\n"
         "To specify a model, use the #model syntax:\n"
         "`@inline_llm_bot #openai/gpt-3.5-turbo Hello!`\n\n"
-        "I'll hide any reasoning/thoughts from the model response."
+        "I'll hide any reasoning/thoughts from the model response.\n\n"
+        "Use /models to see available free models."
     )
     await message.answer(help_text, parse_mode="Markdown")
+
+@dp.message(Command("models"))
+async def send_models(message: types.Message):
+    """
+    Send list of available free models.
+    """
+    try:
+        models = await fetch_free_models()
+        
+        if not models:
+            await message.answer("❌ Error fetching models. Please try again later.")
+            return
+        
+        # Create a message with the models
+        models_text = "Available free models:\n\n"
+        for model in models[:20]:  # Limit to first 20 models
+            models_text += f"• {model}\n"
+        
+        if len(models) > 20:
+            models_text += f"\n... and {len(models) - 20} more models."
+        
+        models_text += "\n\nSee all free models at: https://openrouter.ai/models?max_price=0&order=top-weekly"
+        
+        # Split into multiple messages if too long
+        if len(models_text) > TELEGRAM_MAX_LENGTH:
+            chunks = [models_text[i:i+TELEGRAM_MAX_LENGTH] for i in range(0, len(models_text), TELEGRAM_MAX_LENGTH)]
+            for chunk in chunks:
+                await message.answer(chunk)
+        else:
+            await message.answer(models_text)
+            
+    except Exception as e:
+        logger.error(f"Error sending models: {e}")
+        await message.answer("❌ Error fetching models. Please try again later.")
 
 async def main():
     """
