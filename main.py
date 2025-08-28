@@ -61,7 +61,7 @@ async def fetch_free_models() -> List[str]:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://openrouter.ai/api/v1/models",
-                params={"max_price": 0, "reasoning": {"exclude": True}},
+                params={"max_price": 0},
                 headers={"Authorization": f"Bearer {API_KEY}"} if API_KEY else {},
             )
             response.raise_for_status()
@@ -123,7 +123,8 @@ async def query_llm(model: Optional[str], prompt: str) -> str:
                 {"role": "user", "content": prompt}
             ],
             max_tokens=2048,  # Set to a reasonable value, Telegram will truncate if needed
-            temperature=0.7
+            temperature=0.7,
+            extra_body={"reasoning": {"exclude": True}}
         )
         
         # Extract the response content
