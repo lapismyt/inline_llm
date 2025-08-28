@@ -136,9 +136,9 @@ async def query_llm(model: Optional[str], prompt: str) -> str:
             # content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
             # content = re.sub(r"(\(.*?reasoning.*?\))", "", content, flags=re.IGNORECASE)
             # content = re.sub(r"(\[.*?reasoning.*?\])", "", content, flags=re.IGNORECASE)
-            content = content.split("</think>")[-1]
-            content = content.split("<reasoning>")[-1]
-            content = content.split("assistantfinal")[-1]
+            content = content.split("</think>", 1)[-1]
+            content = content.split("<reasoning>", 1)[-1]
+            content = content.split("assistantfinal", 1)[-1]
             
             # Clean up extra whitespace
             content = re.sub(r"\n\s*\n", "\n\n", content).strip()
