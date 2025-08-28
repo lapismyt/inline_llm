@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import os
 import httpx
+import uuid
 
 # Load environment variables
 load_dotenv()
@@ -60,8 +61,8 @@ async def fetch_free_models() -> List[str]:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://openrouter.ai/api/v1/models",
-                params={"max_price": 0},
-                headers={"Authorization": f"Bearer {API_KEY}"} if API_KEY else {}
+                params={"max_price": 0, "reasoning": {"exclude": True}},
+                headers={"Authorization": f"Bearer {API_KEY}"} if API_KEY else {},
             )
             response.raise_for_status()
             
@@ -179,9 +180,6 @@ async def inline_query_handler(inline_query: types.InlineQuery):
         return
     
     # Store the query data for later retrieval
-    import json
-    import base64
-    import uuid
     query_id = str(uuid.uuid4())[:8]  # Short ID for tracking
     query_storage[query_id] = {
         "model": model,
