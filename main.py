@@ -133,9 +133,9 @@ async def query_llm(model: Optional[str], prompt: str) -> str:
         # Hide reasoning if present (simple approach - remove content between <think> tags if they exist)
         if content:
             # Remove any reasoning/thinking patterns
-            content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
-            content = re.sub(r"(\(.*?reasoning.*?\))", "", content, flags=re.IGNORECASE)
-            content = re.sub(r"(\[.*?reasoning.*?\])", "", content, flags=re.IGNORECASE)
+            # content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
+            # content = re.sub(r"(\(.*?reasoning.*?\))", "", content, flags=re.IGNORECASE)
+            # content = re.sub(r"(\[.*?reasoning.*?\])", "", content, flags=re.IGNORECASE)
             content = content.split("</think>")[-1]
             content = content.split("<reasoning>")[-1]
             content = content.split("assistantfinal")[-1]
